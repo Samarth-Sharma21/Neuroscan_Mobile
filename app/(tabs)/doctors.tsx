@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
   /* List */
   list: {
     paddingHorizontal: Spacing.xl,
-    paddingBottom: 120,
+    paddingBottom: 80,
   },
 
   /* Card */

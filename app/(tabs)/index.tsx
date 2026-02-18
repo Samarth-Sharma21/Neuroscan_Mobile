@@ -42,7 +42,7 @@ export default function HomeScreen() {
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}>
+        contentContainerStyle={{ paddingBottom: 80 }}>
         {/* Hero Section */}
         <LinearGradient
           colors={['#0F766E', '#0D9488', '#14B8A6']}
@@ -119,7 +119,7 @@ export default function HomeScreen() {
           </View>
           <View style={[styles.statCard, styles.statCardAccent]}>
             <Text style={[styles.statNumber, { color: Colors.primary }]}>
-              97.1%
+              97.89%
             </Text>
             <Text style={styles.statLabel}>Model{'\n'}Accuracy</Text>
           </View>

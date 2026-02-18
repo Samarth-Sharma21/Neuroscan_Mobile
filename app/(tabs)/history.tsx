@@ -7,10 +7,20 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  Animated as RNAnimated,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ChevronRight, FileText, ScanLine, Trash2 } from 'lucide-react-native';
+import {
+  ChevronRight,
+  FileText,
+  ScanLine,
+  Trash2,
+  AlertTriangle,
+  X,
+} from 'lucide-react-native';
 import {
   Colors,
   Spacing,
@@ -33,6 +43,9 @@ export default function HistoryScreen() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Report | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [modalAnim] = useState(() => new RNAnimated.Value(0));
 
   const loadReports = useCallback(async () => {
     if (!user?.id) return;
@@ -57,10 +70,31 @@ export default function HistoryScreen() {
   };
 
   const handleDelete = async (id: string) => {
+    setDeleting(true);
     const ok = await deleteReport(id);
     if (ok) {
       setReports((prev) => prev.filter((r) => r.id !== id));
     }
+    setDeleting(false);
+    closeDeleteModal();
+  };
+
+  const openDeleteModal = (report: Report) => {
+    setDeleteTarget(report);
+    RNAnimated.spring(modalAnim, {
+      toValue: 1,
+      tension: 65,
+      friction: 9,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeDeleteModal = () => {
+    RNAnimated.timing(modalAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => setDeleteTarget(null));
   };
 
   const formatDate = (iso: string) => {
@@ -113,7 +147,7 @@ export default function HistoryScreen() {
         <View style={styles.cardActions}>
           <TouchableOpacity
             style={styles.deleteBtn}
-            onPress={() => handleDelete(item.id)}
+            onPress={() => openDeleteModal(item)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Trash2 size={16} color={Colors.textTertiary} />
           </TouchableOpacity>
@@ -169,6 +203,73 @@ export default function HistoryScreen() {
           }
         />
       )}
+
+      {/* ─── Delete Confirmation Modal ─── */}
+      <Modal
+        visible={!!deleteTarget}
+        transparent
+        animationType='none'
+        onRequestClose={closeDeleteModal}
+        statusBarTranslucent>
+        <Pressable style={styles.modalBackdrop} onPress={closeDeleteModal}>
+          <RNAnimated.View
+            style={[
+              styles.modalCard,
+              {
+                opacity: modalAnim,
+                transform: [
+                  {
+                    scale: modalAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.85, 1],
+                    }),
+                  },
+                ],
+              },
+            ]}>
+            <Pressable>
+              {/* Icon */}
+              <View style={styles.modalIconWrap}>
+                <View style={styles.modalIconCircle}>
+                  <Trash2 size={28} color={Colors.danger} strokeWidth={1.8} />
+                </View>
+              </View>
+
+              <Text style={styles.modalTitle}>Delete Scan Report?</Text>
+              <Text style={styles.modalDesc}>
+                This action cannot be undone. The report
+                {deleteTarget?.predicted_class
+                  ? ` (${deleteTarget.predicted_class})`
+                  : ''}{' '}
+                and all associated data will be permanently removed.
+              </Text>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={closeDeleteModal}
+                  activeOpacity={0.7}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalDeleteBtn, deleting && { opacity: 0.6 }]}
+                  onPress={() => deleteTarget && handleDelete(deleteTarget.id)}
+                  disabled={deleting}
+                  activeOpacity={0.8}>
+                  {deleting ? (
+                    <ActivityIndicator size='small' color='#fff' />
+                  ) : (
+                    <>
+                      <Trash2 size={16} color='#fff' strokeWidth={2.2} />
+                      <Text style={styles.modalDeleteText}>Delete</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </RNAnimated.View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -192,7 +293,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  list: { paddingHorizontal: Spacing.xl, paddingBottom: 120 },
+  list: { paddingHorizontal: Spacing.xl, paddingBottom: 80 },
 
   // Card
   card: {
@@ -294,6 +395,82 @@ const styles = StyleSheet.create({
     ...Shadows.glow,
   },
   emptyBtnText: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.md,
+    color: '#fff',
+  },
+
+  // Delete confirmation modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing['2xl'],
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius['2xl'],
+    padding: Spacing['2xl'],
+    ...Shadows.lg,
+  },
+  modalIconWrap: {
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  modalIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: Colors.dangerBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontFamily: FontFamily.bold,
+    fontSize: FontSize.xl,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
+  },
+  modalDesc: {
+    fontFamily: FontFamily.regular,
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: Spacing['2xl'],
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.borderLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelText: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.md,
+    color: Colors.textSecondary,
+  },
+  modalDeleteBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.danger,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  modalDeleteText: {
     fontFamily: FontFamily.semiBold,
     fontSize: FontSize.md,
     color: '#fff',
