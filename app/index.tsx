@@ -48,9 +48,24 @@ export default function SplashLanding() {
         useNativeDriver: true,
       }),
       Animated.stagger(150, [
-        Animated.spring(orb1Anim, { toValue: 1, tension: 20, friction: 7, useNativeDriver: true }),
-        Animated.spring(orb2Anim, { toValue: 1, tension: 20, friction: 7, useNativeDriver: true }),
-        Animated.spring(orb3Anim, { toValue: 1, tension: 20, friction: 7, useNativeDriver: true }),
+        Animated.spring(orb1Anim, {
+          toValue: 1,
+          tension: 20,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(orb2Anim, {
+          toValue: 1,
+          tension: 20,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(orb3Anim, {
+          toValue: 1,
+          tension: 20,
+          friction: 7,
+          useNativeDriver: true,
+        }),
       ]),
     ]).start();
 
@@ -104,13 +119,31 @@ export default function SplashLanding() {
     const textEntrance = Animated.sequence([
       Animated.delay(100),
       Animated.parallel([
-        Animated.spring(textTranslateY, { toValue: 0, tension: 60, friction: 9, useNativeDriver: true }),
-        Animated.timing(textOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.spring(textTranslateY, {
+          toValue: 0,
+          tension: 60,
+          friction: 9,
+          useNativeDriver: true,
+        }),
+        Animated.timing(textOpacity, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
       ]),
       Animated.delay(50),
       Animated.parallel([
-        Animated.spring(subtextTranslateY, { toValue: 0, tension: 60, friction: 9, useNativeDriver: true }),
-        Animated.timing(subtextOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.spring(subtextTranslateY, {
+          toValue: 0,
+          tension: 60,
+          friction: 9,
+          useNativeDriver: true,
+        }),
+        Animated.timing(subtextOpacity, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
       ]),
     ]);
 
@@ -124,18 +157,26 @@ export default function SplashLanding() {
         useNativeDriver: false,
       }),
       Animated.stagger(100, [
-        Animated.timing(dotOpacity1, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(dotOpacity2, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(dotOpacity3, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(dotOpacity1, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(dotOpacity2, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(dotOpacity3, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
       ]),
     ]);
 
     // Run phases in sequence
-    Animated.sequence([
-      logoEntrance,
-      textEntrance,
-      indicatorEntrance,
-    ]).start();
+    Animated.sequence([logoEntrance, textEntrance, indicatorEntrance]).start();
 
     // Continuous subtle pulse on logo
     Animated.loop(
@@ -190,7 +231,14 @@ export default function SplashLanding() {
           styles.orb1,
           {
             opacity: orb1Anim,
-            transform: [{ scale: orb1Anim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }],
+            transform: [
+              {
+                scale: orb1Anim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.3, 1],
+                }),
+              },
+            ],
           },
         ]}
       />
@@ -200,7 +248,14 @@ export default function SplashLanding() {
           styles.orb2,
           {
             opacity: orb2Anim,
-            transform: [{ scale: orb2Anim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }],
+            transform: [
+              {
+                scale: orb2Anim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.3, 1],
+                }),
+              },
+            ],
           },
         ]}
       />
@@ -210,7 +265,14 @@ export default function SplashLanding() {
           styles.orb3,
           {
             opacity: orb3Anim,
-            transform: [{ scale: orb3Anim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }],
+            transform: [
+              {
+                scale: orb3Anim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.3, 1],
+                }),
+              },
+            ],
           },
         ]}
       />
@@ -281,7 +343,9 @@ export default function SplashLanding() {
           ]}
         />
         <View style={styles.dotsRow}>
-          <Animated.View style={[styles.dot, styles.dotActive, { opacity: dotOpacity1 }]} />
+          <Animated.View
+            style={[styles.dot, styles.dotActive, { opacity: dotOpacity1 }]}
+          />
           <Animated.View style={[styles.dot, { opacity: dotOpacity2 }]} />
           <Animated.View style={[styles.dot, { opacity: dotOpacity3 }]} />
         </View>

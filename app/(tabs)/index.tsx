@@ -119,7 +119,7 @@ export default function HomeScreen() {
           </View>
           <View style={[styles.statCard, styles.statCardAccent]}>
             <Text style={[styles.statNumber, { color: Colors.primary }]}>
-              97.89%
+              97.9%
             </Text>
             <Text style={styles.statLabel}>Model{'\n'}Accuracy</Text>
           </View>
