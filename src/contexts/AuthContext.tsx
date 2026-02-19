@@ -91,6 +91,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         fetchProfile(session.user.id);
       }
       setLoading(false);
+    }).catch(() => {
+      // Network error or Supabase timeout — don't stay stuck on splash
+      setLoading(false);
     });
 
     // Listen for auth changes

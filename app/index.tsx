@@ -18,6 +18,7 @@ const { width, height } = Dimensions.get('window');
 
 export default function SplashLanding() {
   const { session, loading } = useAuth();
+  const mountTimeRef = useRef(Date.now());
 
   // Animated values
   const bgOpacity = useRef(new Animated.Value(0)).current;
@@ -197,15 +198,26 @@ export default function SplashLanding() {
     ).start();
   }, []);
 
+  // Hard safety: if loading never resolves or takes too long, force navigation after 5s
+  useEffect(() => {
+    const safetyTimer = setTimeout(() => {
+      router.replace(session ? '/(tabs)' : ('/auth' as any));
+    }, 5000);
+    return () => clearTimeout(safetyTimer);
+  }, []);
+
+  // Normal navigation: wait for auth to resolve, then navigate after remaining animation time
   useEffect(() => {
     if (!loading) {
+      const elapsed = Date.now() - mountTimeRef.current;
+      const remaining = Math.max(0, 2800 - elapsed);
       const timer = setTimeout(() => {
         if (session) {
           router.replace('/(tabs)');
         } else {
           router.replace('/auth' as any);
         }
-      }, 2800);
+      }, remaining);
       return () => clearTimeout(timer);
     }
   }, [loading, session]);
