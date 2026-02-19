@@ -8,6 +8,11 @@
     "scheme": "neuroscan",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-image.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D9488"
+    },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -31,7 +36,7 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "updates": {
@@ -45,6 +50,15 @@
     "plugins": [
       "expo-router",
       "expo-updates",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-image.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0D9488"
+        }
+      ],
       [
         "expo-image-picker",
         {

@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,6 +7,10 @@ import {
   TouchableOpacity,
   Alert,
   Linking,
+  TextInput,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -13,14 +18,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   ArrowLeft,
   Brain,
-  Database,
   Shield,
   Info,
   ExternalLink,
   LogOut,
   ChevronRight,
   Cpu,
-  Layers,
+  Heart,
+  Save,
+  Check,
 } from 'lucide-react-native';
 import {
   Colors,
@@ -31,10 +37,79 @@ import {
   Shadows,
 } from '../src/constants/theme';
 import { useAuth } from '../src/contexts/AuthContext';
+import { updateProfile } from '../src/services/api';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, signOut } = useAuth();
+  const { user, profile, signOut, refreshProfile } = useAuth();
+
+  // Clinical form state
+  const [clinicalForm, setClinicalForm] = useState({
+    age: '',
+    sex: '',
+    date_of_birth: '',
+    blood_group: '',
+    known_conditions: '',
+    current_medications: '',
+    allergies: '',
+    family_history: '',
+    clinical_notes: '',
+  });
+  const [clinicalSaving, setClinicalSaving] = useState(false);
+  const [clinicalSaved, setClinicalSaved] = useState(false);
+
+  // Pre-fill from profile
+  useEffect(() => {
+    if (profile) {
+      setClinicalForm({
+        age: profile.age != null ? String(profile.age) : '',
+        sex: profile.sex || '',
+        date_of_birth: profile.date_of_birth || '',
+        blood_group: profile.blood_group || '',
+        known_conditions: profile.known_conditions || '',
+        current_medications: profile.current_medications || '',
+        allergies: profile.allergies || '',
+        family_history: profile.family_history || '',
+        clinical_notes: profile.clinical_notes || '',
+      });
+    }
+  }, [profile]);
+
+  const handleClinicalSave = useCallback(async () => {
+    if (!user?.id) return;
+    setClinicalSaving(true);
+    setClinicalSaved(false);
+
+    const ageNum =
+      clinicalForm.age.trim() === '' ? null : parseInt(clinicalForm.age, 10);
+
+    if (ageNum !== null && (isNaN(ageNum) || ageNum < 0 || ageNum > 130)) {
+      Alert.alert('Invalid', 'Age must be between 0 and 130.');
+      setClinicalSaving(false);
+      return;
+    }
+
+    const success = await updateProfile(user.id, {
+      age: ageNum,
+      sex: clinicalForm.sex || null,
+      date_of_birth: clinicalForm.date_of_birth || null,
+      blood_group: clinicalForm.blood_group || null,
+      known_conditions: clinicalForm.known_conditions || null,
+      current_medications: clinicalForm.current_medications || null,
+      allergies: clinicalForm.allergies || null,
+      family_history: clinicalForm.family_history || null,
+      clinical_notes: clinicalForm.clinical_notes || null,
+    });
+
+    setClinicalSaving(false);
+    if (success) {
+      setClinicalSaved(true);
+      await refreshProfile();
+      setTimeout(() => setClinicalSaved(false), 3000);
+    } else {
+      Alert.alert('Error', 'Could not save clinical details.');
+    }
+  }, [user?.id, clinicalForm, refreshProfile]);
 
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -97,33 +172,6 @@ export default function SettingsScreen() {
           <InfoRow label='Backend' value='HF Spaces' />
         </View>
 
-        {/* Infrastructure */}
-        <View style={styles.card}>
-          <View style={styles.sectionHeader}>
-            <Database size={18} color={Colors.primary} />
-            <Text style={styles.sectionTitle}>Infrastructure</Text>
-          </View>
-          <InfoRow label='Database' value='Supabase (PostgreSQL)' />
-          <InfoRow label='Auth' value='Supabase Auth' />
-          <InfoRow label='Storage' value='Row Level Security' />
-        </View>
-
-        {/* Database Tables */}
-        <View style={styles.card}>
-          <View style={styles.sectionHeader}>
-            <Layers size={18} color={Colors.primary} />
-            <Text style={styles.sectionTitle}>Database Tables</Text>
-          </View>
-          <TableItem
-            name='neuroscan_profiles'
-            desc='User profiles and account data'
-          />
-          <TableItem
-            name='neuroscan_reports'
-            desc='Scan reports, predictions & probabilities'
-          />
-        </View>
-
         {/* Account */}
         <View style={styles.card}>
           <View style={styles.sectionHeader}>
@@ -141,6 +189,204 @@ export default function SettingsScreen() {
               },
             )}
           />
+        </View>
+
+        {/* Clinical Profile */}
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <Heart size={18} color={Colors.primary} />
+            <Text style={styles.sectionTitle}>Clinical Profile</Text>
+          </View>
+          <Text style={styles.clinicalHint}>
+            Optional details included in generated PDF reports. Leave blank if
+            unavailable.
+          </Text>
+
+          {/* Age */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Age</Text>
+            <TextInput
+              style={styles.fieldInput}
+              value={clinicalForm.age}
+              onChangeText={(v) => setClinicalForm((f) => ({ ...f, age: v }))}
+              placeholder='e.g. 68'
+              placeholderTextColor={Colors.textTertiary}
+              keyboardType='numeric'
+              maxLength={3}
+            />
+          </View>
+
+          {/* Sex selector */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Sex</Text>
+            <View style={styles.sexRow}>
+              {['Male', 'Female', 'Other'].map((opt) => (
+                <TouchableOpacity
+                  key={opt}
+                  style={[
+                    styles.sexBtn,
+                    clinicalForm.sex === opt && styles.sexBtnActive,
+                  ]}
+                  onPress={() =>
+                    setClinicalForm((f) => ({
+                      ...f,
+                      sex: f.sex === opt ? '' : opt,
+                    }))
+                  }>
+                  <Text
+                    style={[
+                      styles.sexBtnText,
+                      clinicalForm.sex === opt && styles.sexBtnTextActive,
+                    ]}>
+                    {opt}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Date of Birth */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Date of Birth</Text>
+            <TextInput
+              style={styles.fieldInput}
+              value={clinicalForm.date_of_birth}
+              onChangeText={(v) =>
+                setClinicalForm((f) => ({ ...f, date_of_birth: v }))
+              }
+              placeholder='YYYY-MM-DD'
+              placeholderTextColor={Colors.textTertiary}
+            />
+          </View>
+
+          {/* Blood Group */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Blood Group</Text>
+            <TextInput
+              style={styles.fieldInput}
+              value={clinicalForm.blood_group}
+              onChangeText={(v) =>
+                setClinicalForm((f) => ({ ...f, blood_group: v }))
+              }
+              placeholder='e.g. B+'
+              placeholderTextColor={Colors.textTertiary}
+            />
+          </View>
+
+          {/* Known Conditions */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Known Conditions</Text>
+            <TextInput
+              style={[styles.fieldInput, styles.fieldTextArea]}
+              value={clinicalForm.known_conditions}
+              onChangeText={(v) =>
+                setClinicalForm((f) => ({ ...f, known_conditions: v }))
+              }
+              placeholder='Diabetes, hypertension, etc.'
+              placeholderTextColor={Colors.textTertiary}
+              multiline
+              numberOfLines={2}
+              textAlignVertical='top'
+            />
+          </View>
+
+          {/* Current Medications */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Current Medications</Text>
+            <TextInput
+              style={[styles.fieldInput, styles.fieldTextArea]}
+              value={clinicalForm.current_medications}
+              onChangeText={(v) =>
+                setClinicalForm((f) => ({ ...f, current_medications: v }))
+              }
+              placeholder='List active medications'
+              placeholderTextColor={Colors.textTertiary}
+              multiline
+              numberOfLines={2}
+              textAlignVertical='top'
+            />
+          </View>
+
+          {/* Allergies */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Allergies</Text>
+            <TextInput
+              style={[styles.fieldInput, styles.fieldTextArea]}
+              value={clinicalForm.allergies}
+              onChangeText={(v) =>
+                setClinicalForm((f) => ({ ...f, allergies: v }))
+              }
+              placeholder='Drug/food/environment allergies'
+              placeholderTextColor={Colors.textTertiary}
+              multiline
+              numberOfLines={2}
+              textAlignVertical='top'
+            />
+          </View>
+
+          {/* Family History */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Family History</Text>
+            <TextInput
+              style={[styles.fieldInput, styles.fieldTextArea]}
+              value={clinicalForm.family_history}
+              onChangeText={(v) =>
+                setClinicalForm((f) => ({ ...f, family_history: v }))
+              }
+              placeholder='Family neurological history'
+              placeholderTextColor={Colors.textTertiary}
+              multiline
+              numberOfLines={2}
+              textAlignVertical='top'
+            />
+          </View>
+
+          {/* Clinical Notes */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Clinical Notes</Text>
+            <TextInput
+              style={[
+                styles.fieldInput,
+                styles.fieldTextArea,
+                { minHeight: 80 },
+              ]}
+              value={clinicalForm.clinical_notes}
+              onChangeText={(v) =>
+                setClinicalForm((f) => ({ ...f, clinical_notes: v }))
+              }
+              placeholder='Additional notes for reports'
+              placeholderTextColor={Colors.textTertiary}
+              multiline
+              numberOfLines={3}
+              textAlignVertical='top'
+            />
+          </View>
+
+          {/* Save button */}
+          <TouchableOpacity
+            style={[
+              styles.clinicalSaveBtn,
+              clinicalSaved && { backgroundColor: Colors.success },
+            ]}
+            onPress={handleClinicalSave}
+            disabled={clinicalSaving}
+            activeOpacity={0.8}>
+            {clinicalSaving ? (
+              <ActivityIndicator size='small' color='#fff' />
+            ) : clinicalSaved ? (
+              <>
+                <Check size={18} color='#fff' />
+                <Text style={styles.clinicalSaveBtnText}>Saved!</Text>
+              </>
+            ) : (
+              <>
+                <Save size={18} color='#fff' />
+                <Text style={styles.clinicalSaveBtnText}>
+                  Save Clinical Details
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Disclaimer */}
@@ -178,18 +424,6 @@ function InfoRow({ label, value }: { label: string; value: string }) {
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
       <Text style={styles.infoValue}>{value}</Text>
-    </View>
-  );
-}
-
-function TableItem({ name, desc }: { name: string; desc: string }) {
-  return (
-    <View style={styles.tableItem}>
-      <View style={styles.tableDot} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.tableName}>{name}</Text>
-        <Text style={styles.tableDesc}>{desc}</Text>
-      </View>
     </View>
   );
 }
@@ -308,32 +542,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 
-  /* Table items */
-  tableItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 14,
-  },
-  tableDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.primary,
-    marginTop: 6,
-  },
-  tableName: {
-    fontFamily: FontFamily.semiBold,
-    fontSize: FontSize.sm,
-    color: Colors.textPrimary,
-  },
-  tableDesc: {
-    fontFamily: FontFamily.regular,
-    fontSize: FontSize.xs,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-
   /* Disclaimer */
   disclaimerCard: {
     backgroundColor: 'rgba(245, 158, 11, 0.06)',
@@ -362,6 +570,80 @@ const styles = StyleSheet.create({
     ...Shadows.md,
   },
   logoutText: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.md,
+    color: '#fff',
+  },
+
+  /* Clinical Profile */
+  clinicalHint: {
+    fontFamily: FontFamily.regular,
+    fontSize: FontSize.xs + 1,
+    color: Colors.textTertiary,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  fieldGroup: {
+    marginBottom: 16,
+  },
+  fieldLabel: {
+    fontFamily: FontFamily.medium,
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    marginBottom: 6,
+  },
+  fieldInput: {
+    backgroundColor: Colors.surfaceHover,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: FontFamily.regular,
+    fontSize: FontSize.sm,
+    color: Colors.textPrimary,
+  },
+  fieldTextArea: {
+    minHeight: 56,
+    paddingTop: 12,
+  },
+  sexRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  sexBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.surfaceHover,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    alignItems: 'center',
+  },
+  sexBtnActive: {
+    backgroundColor: Colors.primaryMuted,
+    borderColor: Colors.primary,
+  },
+  sexBtnText: {
+    fontFamily: FontFamily.medium,
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+  },
+  sexBtnTextActive: {
+    color: Colors.primary,
+    fontFamily: FontFamily.semiBold,
+  },
+  clinicalSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  clinicalSaveBtnText: {
     fontFamily: FontFamily.semiBold,
     fontSize: FontSize.md,
     color: '#fff',

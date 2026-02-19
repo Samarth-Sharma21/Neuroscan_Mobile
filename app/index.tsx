@@ -198,11 +198,13 @@ export default function SplashLanding() {
     ).start();
   }, []);
 
-  // Hard safety: if loading never resolves or takes too long, force navigation after 5s
+  // Hard safety: if loading never resolves, force navigation after 3.5s
   useEffect(() => {
     const safetyTimer = setTimeout(() => {
-      router.replace(session ? '/(tabs)' : ('/auth' as any));
-    }, 5000);
+      try {
+        router.replace(session ? '/(tabs)' : ('/auth' as any));
+      } catch {}
+    }, 3500);
     return () => clearTimeout(safetyTimer);
   }, []);
 
@@ -210,13 +212,15 @@ export default function SplashLanding() {
   useEffect(() => {
     if (!loading) {
       const elapsed = Date.now() - mountTimeRef.current;
-      const remaining = Math.max(0, 2800 - elapsed);
+      const remaining = Math.max(0, 2200 - elapsed);
       const timer = setTimeout(() => {
-        if (session) {
-          router.replace('/(tabs)');
-        } else {
-          router.replace('/auth' as any);
-        }
+        try {
+          if (session) {
+            router.replace('/(tabs)');
+          } else {
+            router.replace('/auth' as any);
+          }
+        } catch {}
       }, remaining);
       return () => clearTimeout(timer);
     }

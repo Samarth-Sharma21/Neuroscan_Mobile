@@ -13,6 +13,16 @@ interface Profile {
   full_name: string | null;
   avatar_url: string | null;
   created_at: string;
+  // Clinical detail fields
+  age: number | null;
+  sex: string | null;
+  date_of_birth: string | null;
+  blood_group: string | null;
+  known_conditions: string | null;
+  current_medications: string | null;
+  allergies: string | null;
+  family_history: string | null;
+  clinical_notes: string | null;
 }
 
 interface AuthContextType {
@@ -64,7 +74,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Profile doesn't exist yet — create it
         const { data: newProfile } = await supabase
           .from('neuroscan_profiles')
-          .insert({ id: userId, full_name: null, avatar_url: null })
+          .insert({
+            id: userId,
+            full_name: null,
+            avatar_url: null,
+            age: null,
+            sex: null,
+            date_of_birth: null,
+            blood_group: null,
+            known_conditions: null,
+            current_medications: null,
+            allergies: null,
+            family_history: null,
+            clinical_notes: null,
+          })
           .select()
           .single();
         setProfile(newProfile);
@@ -84,17 +107,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      }
-      setLoading(false);
-    }).catch(() => {
-      // Network error or Supabase timeout — don't stay stuck on splash
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          fetchProfile(session.user.id);
+        }
+        setLoading(false);
+      })
+      .catch(() => {
+        // Network error or Supabase timeout — don't stay stuck on splash
+        setLoading(false);
+      });
 
     // Listen for auth changes
     const {

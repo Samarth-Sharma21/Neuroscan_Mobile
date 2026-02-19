@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,13 @@ import {
   Modal,
   Dimensions,
   StatusBar,
+  Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Sharing from 'expo-sharing';
 import {
   ArrowLeft,
   Brain,
@@ -20,6 +24,18 @@ import {
   Info,
   X,
   Maximize2,
+  Shield,
+  AlertTriangle,
+  FileText,
+  Download,
+  Heart,
+  MapPin,
+  Layers,
+  Clock,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  ChevronRight,
 } from 'lucide-react-native';
 import {
   Colors,
@@ -30,19 +46,54 @@ import {
   Shadows,
   classificationColors,
 } from '../../src/constants/theme';
-import { fetchReport, type Report } from '../../src/services/api';
+import {
+  fetchReport,
+  fetchTimeline,
+  generatePdfReport,
+  type Report,
+  type TimelineEntry,
+} from '../../src/services/api';
+import { useAuth } from '../../src/contexts/AuthContext';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 type ImageMode = 'attention' | 'overlay';
 
+// ─── Helpers ────────────────────────────────────────
+function riskColor(level?: string | null) {
+  if (!level) return Colors.textTertiary;
+  const l = level.toLowerCase();
+  if (l.includes('low')) return Colors.success;
+  if (l.includes('moderate')) return Colors.warning;
+  return Colors.danger;
+}
+
+function riskBg(level?: string | null) {
+  if (!level) return Colors.surfaceHover;
+  const l = level.toLowerCase();
+  if (l.includes('low')) return Colors.successBg;
+  if (l.includes('moderate')) return Colors.warningBg;
+  return Colors.dangerBg;
+}
+
+function reliabilityColor(r?: string | null) {
+  if (!r) return Colors.textTertiary;
+  if (r === 'High') return Colors.success;
+  if (r === 'Moderate') return Colors.warning;
+  return Colors.danger;
+}
+
+// ─── Component ──────────────────────────────────────
 export default function ResultsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { user, profile } = useAuth();
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [imageMode, setImageMode] = useState<ImageMode>('attention');
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -58,6 +109,61 @@ export default function ResultsScreen() {
     if (id) load();
   }, [id]);
 
+  // ─── Timeline ────────────────────────────────────
+  useEffect(() => {
+    if (user?.id) {
+      fetchTimeline(user.id)
+        .then(setTimeline)
+        .catch(() => {});
+    }
+  }, [user?.id]);
+
+  // ─── PDF Download & Share ────────────────────────
+  const handleDownloadPdf = useCallback(async () => {
+    if (!report) return;
+    setPdfLoading(true);
+    try {
+      const patientName = profile?.full_name || 'Patient';
+      const patientDetails = profile
+        ? {
+            age: profile.age ?? null,
+            sex: profile.sex ?? null,
+            date_of_birth: profile.date_of_birth ?? null,
+            blood_group: profile.blood_group ?? null,
+            known_conditions: profile.known_conditions ?? null,
+            current_medications: profile.current_medications ?? null,
+            allergies: profile.allergies ?? null,
+            family_history: profile.family_history ?? null,
+            clinical_notes: profile.clinical_notes ?? null,
+          }
+        : null;
+      const fileUri = await generatePdfReport(
+        report,
+        patientName,
+        patientDetails,
+        timeline.length > 1 ? timeline : null,
+      );
+      if (fileUri) {
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/pdf',
+            dialogTitle: 'NeuroScan Report',
+          });
+        } else {
+          Alert.alert('Success', 'PDF report saved to app documents.');
+        }
+      } else {
+        Alert.alert('Error', 'Failed to generate PDF report.');
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'PDF generation failed.');
+    } finally {
+      setPdfLoading(false);
+    }
+  }, [report, profile]);
+
+  // ─── Loading / Error states ──────────────────────
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -122,7 +228,16 @@ export default function ResultsScreen() {
           <ArrowLeft size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Scan Report</Text>
-        <View style={{ width: 44 }} />
+        <TouchableOpacity
+          onPress={handleDownloadPdf}
+          style={styles.headerBack}
+          disabled={pdfLoading}>
+          {pdfLoading ? (
+            <ActivityIndicator size='small' color={Colors.primary} />
+          ) : (
+            <Download size={20} color={Colors.primary} />
+          )}
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -178,7 +293,7 @@ export default function ResultsScreen() {
           )}
         </View>
 
-        {/* Prediction Card */}
+        {/* ═══ Prediction Card ═══ */}
         <View style={styles.card}>
           <View style={[styles.predBadge, { backgroundColor: clsInfo.bg }]}>
             <View
@@ -218,9 +333,167 @@ export default function ResultsScreen() {
               ]}
             />
           </View>
+
+          {/* Confidence Reliability */}
+          {report.confidence_reliability && (
+            <View style={styles.reliabilityRow}>
+              <Shield
+                size={14}
+                color={reliabilityColor(report.confidence_reliability)}
+              />
+              <Text style={styles.reliabilityLabel}>Reliability:</Text>
+              <Text
+                style={[
+                  styles.reliabilityValue,
+                  {
+                    color: reliabilityColor(report.confidence_reliability),
+                  },
+                ]}>
+                {report.confidence_reliability}
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* Class Probabilities */}
+        {/* ═══ Risk Assessment Card ═══ */}
+        {(report.risk_score != null || report.risk_level) && (
+          <View style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <AlertTriangle size={18} color={riskColor(report.risk_level)} />
+              <Text style={styles.sectionTitle}>Risk Assessment</Text>
+            </View>
+
+            {/* Risk Level Badge */}
+            {report.risk_level && (
+              <View
+                style={[
+                  styles.riskBadge,
+                  { backgroundColor: riskBg(report.risk_level) },
+                ]}>
+                <Text
+                  style={[
+                    styles.riskBadgeText,
+                    { color: riskColor(report.risk_level) },
+                  ]}>
+                  {report.risk_level}
+                </Text>
+              </View>
+            )}
+
+            {/* Risk Score Meter */}
+            {report.risk_score != null && (
+              <View style={styles.meterSection}>
+                <View style={styles.meterHeader}>
+                  <Text style={styles.meterLabel}>Risk Score</Text>
+                  <Text
+                    style={[
+                      styles.meterValue,
+                      { color: riskColor(report.risk_level) },
+                    ]}>
+                    {Number(report.risk_score).toFixed(1)}%
+                  </Text>
+                </View>
+                <View style={styles.meterBarBg}>
+                  <View
+                    style={[
+                      styles.meterBarFill,
+                      {
+                        width:
+                          `${Math.min(Number(report.risk_score), 100)}%` as any,
+                        backgroundColor: riskColor(report.risk_level),
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Attention Coverage */}
+            {report.attention_coverage_percent != null && (
+              <View style={styles.meterSection}>
+                <View style={styles.meterHeader}>
+                  <Text style={styles.meterLabel}>Attention Coverage</Text>
+                  <Text style={[styles.meterValue, { color: Colors.primary }]}>
+                    {Number(report.attention_coverage_percent).toFixed(1)}%
+                  </Text>
+                </View>
+                <View style={styles.meterBarBg}>
+                  <View
+                    style={[
+                      styles.meterBarFill,
+                      {
+                        width:
+                          `${Math.min(Number(report.attention_coverage_percent), 100)}%` as any,
+                        backgroundColor: Colors.primary,
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Normal Comparison */}
+            {report.normal_comparison_score != null && (
+              <View style={styles.meterSection}>
+                <View style={styles.meterHeader}>
+                  <Text style={styles.meterLabel}>
+                    Compare with Normal Brain
+                  </Text>
+                  <Text style={[styles.meterValue, { color: Colors.info }]}>
+                    {Number(report.normal_comparison_score).toFixed(1)}%
+                  </Text>
+                </View>
+                <View style={styles.meterBarBg}>
+                  <View
+                    style={[
+                      styles.meterBarFill,
+                      {
+                        width:
+                          `${Math.min(Number(report.normal_comparison_score), 100)}%` as any,
+                        backgroundColor: Colors.info,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.meterHint}>
+                  100% = identical to normal brain pattern
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ═══ Clinical Analysis Card ═══ */}
+        {(report.clinical_explanation || report.recommendation) && (
+          <View style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Heart size={18} color={Colors.primary} />
+              <Text style={styles.sectionTitle}>Clinical Analysis</Text>
+            </View>
+
+            {report.clinical_explanation && (
+              <View style={styles.clinicalBlock}>
+                <Text style={styles.clinicalLabel}>Explanation</Text>
+                <Text style={styles.clinicalText}>
+                  {report.clinical_explanation}
+                </Text>
+              </View>
+            )}
+
+            {report.recommendation && (
+              <View
+                style={[
+                  styles.recommendationBox,
+                  { borderLeftColor: riskColor(report.risk_level) },
+                ]}>
+                <Text style={styles.clinicalLabel}>Recommendation</Text>
+                <Text style={styles.clinicalText}>{report.recommendation}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ═══ Class Probabilities ═══ */}
         {report.probabilities && (
           <View style={styles.card}>
             <View style={styles.sectionHeader}>
@@ -230,7 +503,6 @@ export default function ResultsScreen() {
             {Object.entries(report.probabilities).map(
               ([cls, prob]: [string, any]) => {
                 const ci = classificationColors[cls];
-                // prob may already be a percentage (0-100) or a decimal (0-1)
                 const pctValue =
                   Number(prob) > 1 ? Number(prob) : Number(prob) * 100;
                 const clampedWidth = Math.min(pctValue, 100);
@@ -258,11 +530,58 @@ export default function ResultsScreen() {
           </View>
         )}
 
-        {/* HUFA Stats */}
+        {/* ═══ Brain Regions Card ═══ */}
+        {report.brain_regions &&
+          Array.isArray(report.brain_regions) &&
+          report.brain_regions.length > 0 && (
+            <View style={styles.card}>
+              <View style={styles.sectionHeader}>
+                <MapPin size={18} color={Colors.primary} />
+                <Text style={styles.sectionTitle}>Affected Brain Regions</Text>
+              </View>
+              <Text style={styles.regionDisclaimer}>
+                Regions are estimated using approximate atlas mapping based on
+                attention patterns.
+              </Text>
+              {[...report.brain_regions]
+                .sort(
+                  (a: any, b: any) =>
+                    (b.attention_percent || 0) - (a.attention_percent || 0),
+                )
+                .map((region: any, idx: number) => {
+                  const pct = Number(region.attention_percent || 0);
+                  return (
+                    <View key={idx} style={styles.regionRow}>
+                      <View style={styles.regionRank}>
+                        <Text style={styles.regionRankText}>{idx + 1}</Text>
+                      </View>
+                      <View style={styles.regionInfo}>
+                        <Text style={styles.regionName}>
+                          {region.region_name}
+                        </Text>
+                        <View style={styles.regionBarBg}>
+                          <View
+                            style={[
+                              styles.regionBarFill,
+                              {
+                                width: `${Math.min(pct, 100)}%` as any,
+                              },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                      <Text style={styles.regionPct}>{pct.toFixed(1)}%</Text>
+                    </View>
+                  );
+                })}
+            </View>
+          )}
+
+        {/* ═══ HUFA Stats ═══ */}
         {report.hufa_stats && (
           <View style={styles.card}>
             <View style={styles.sectionHeader}>
-              <Brain size={18} color={Colors.primary} />
+              <Layers size={18} color={Colors.primary} />
               <Text style={styles.sectionTitle}>HUFA Module Stats</Text>
             </View>
             {Object.entries(report.hufa_stats).map(
@@ -282,7 +601,7 @@ export default function ResultsScreen() {
           </View>
         )}
 
-        {/* Report Details */}
+        {/* ═══ Report Details ═══ */}
         <View style={styles.card}>
           <View style={styles.sectionHeader}>
             <Info size={18} color={Colors.primary} />
@@ -319,7 +638,286 @@ export default function ResultsScreen() {
           </View>
         </View>
 
-        {/* Disclaimer */}
+        {/* ═══ PDF Download Button ═══ */}
+        <TouchableOpacity
+          style={styles.pdfBtn}
+          onPress={handleDownloadPdf}
+          disabled={pdfLoading}
+          activeOpacity={0.85}>
+          <LinearGradient
+            colors={[...Colors.gradientPrimary]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.pdfBtnInner, pdfLoading && { opacity: 0.7 }]}>
+            {pdfLoading ? (
+              <>
+                <ActivityIndicator color='#fff' size='small' />
+                <Text style={styles.pdfBtnText}>Generating PDF...</Text>
+              </>
+            ) : (
+              <>
+                <FileText size={20} color='#fff' />
+                <Text style={styles.pdfBtnText}>Download PDF Report</Text>
+              </>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* ═══ Scan History & Comparison ═══ */}
+        {timeline.length > 1 &&
+          (() => {
+            // Find current report in timeline
+            const currentIdx = timeline.findIndex((t) => t.id === id);
+            const currentEntry =
+              currentIdx >= 0
+                ? timeline[currentIdx]
+                : timeline[timeline.length - 1];
+            const previousScans = timeline.filter(
+              (t) => t.id !== currentEntry.id,
+            );
+
+            // Calculate trend vs previous scan
+            const prevEntry =
+              currentIdx > 0
+                ? timeline[currentIdx - 1]
+                : previousScans[previousScans.length - 1];
+            const riskDelta =
+              prevEntry &&
+              currentEntry.risk_score != null &&
+              prevEntry.risk_score != null
+                ? currentEntry.risk_score - prevEntry.risk_score
+                : null;
+
+            return (
+              <View style={styles.card}>
+                <View style={styles.sectionHeader}>
+                  <Clock size={20} color={Colors.primary} />
+                  <Text style={styles.sectionTitle}>
+                    Scan History ({timeline.length} scans)
+                  </Text>
+                </View>
+
+                {/* Current vs Previous Summary */}
+                {prevEntry && (
+                  <View style={styles.tlCompareSummary}>
+                    <View style={styles.tlCompareCol}>
+                      <Text style={styles.tlCompareLabel}>Previous</Text>
+                      <View
+                        style={[
+                          styles.tlCompareBadge,
+                          { backgroundColor: riskBg(prevEntry.risk_level) },
+                        ]}>
+                        <Text
+                          style={[
+                            styles.tlCompareBadgeText,
+                            { color: riskColor(prevEntry.risk_level) },
+                          ]}>
+                          {prevEntry.predicted_class}
+                        </Text>
+                      </View>
+                      <Text style={styles.tlCompareRisk}>
+                        Risk: {prevEntry.risk_score ?? 'N/A'}%
+                      </Text>
+                    </View>
+
+                    <View style={styles.tlCompareArrow}>
+                      {riskDelta != null ? (
+                        riskDelta > 0 ? (
+                          <TrendingUp size={22} color={Colors.danger} />
+                        ) : riskDelta < 0 ? (
+                          <TrendingDown size={22} color={Colors.success} />
+                        ) : (
+                          <Minus size={22} color={Colors.textTertiary} />
+                        )
+                      ) : (
+                        <ChevronRight size={22} color={Colors.textTertiary} />
+                      )}
+                      {riskDelta != null && riskDelta !== 0 && (
+                        <Text
+                          style={[
+                            styles.tlDeltaText,
+                            {
+                              color:
+                                riskDelta > 0 ? Colors.danger : Colors.success,
+                            },
+                          ]}>
+                          {riskDelta > 0 ? '+' : ''}
+                          {riskDelta.toFixed(1)}%
+                        </Text>
+                      )}
+                    </View>
+
+                    <View style={styles.tlCompareCol}>
+                      <Text style={styles.tlCompareLabel}>Current</Text>
+                      <View
+                        style={[
+                          styles.tlCompareBadge,
+                          { backgroundColor: riskBg(currentEntry.risk_level) },
+                        ]}>
+                        <Text
+                          style={[
+                            styles.tlCompareBadgeText,
+                            { color: riskColor(currentEntry.risk_level) },
+                          ]}>
+                          {currentEntry.predicted_class}
+                        </Text>
+                      </View>
+                      <Text style={styles.tlCompareRisk}>
+                        Risk: {currentEntry.risk_score ?? 'N/A'}%
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Bar chart row */}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.tlBarScroll}
+                  contentContainerStyle={styles.tlBarScrollContent}>
+                  {timeline.map((entry, idx) => {
+                    const isCurrent = entry.id === currentEntry.id;
+                    const riskVal = entry.risk_score ?? 0;
+                    const barH = Math.max(riskVal, 5);
+                    const barColor = riskColor(entry.risk_level);
+                    const dateLabel = new Date(
+                      entry.created_at,
+                    ).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                    });
+                    return (
+                      <View
+                        key={entry.id || idx}
+                        style={[
+                          styles.tlBarGroup,
+                          isCurrent && styles.tlBarGroupCurrent,
+                        ]}>
+                        <Text style={styles.tlBarRiskLabel}>{riskVal}%</Text>
+                        <View style={styles.tlBarWrapper}>
+                          <View
+                            style={[
+                              styles.tlBar,
+                              { height: `${barH}%`, backgroundColor: barColor },
+                              isCurrent && {
+                                borderWidth: 2,
+                                borderColor: Colors.primary,
+                              },
+                            ]}
+                          />
+                        </View>
+                        <Text
+                          style={[
+                            styles.tlBarDate,
+                            isCurrent && styles.tlBarDateCurrent,
+                          ]}
+                          numberOfLines={1}>
+                          {dateLabel}
+                        </Text>
+                        {isCurrent && <View style={styles.tlCurrentDot} />}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+
+                {/* History list */}
+                <Text style={styles.tlHistoryTitle}>All Previous Scans</Text>
+                {previousScans
+                  .slice()
+                  .reverse()
+                  .map((entry) => {
+                    const isImproved =
+                      currentEntry.risk_score != null &&
+                      entry.risk_score != null &&
+                      currentEntry.risk_score < entry.risk_score;
+                    const isWorse =
+                      currentEntry.risk_score != null &&
+                      entry.risk_score != null &&
+                      currentEntry.risk_score > entry.risk_score;
+                    const dateStr = new Date(
+                      entry.created_at,
+                    ).toLocaleDateString(undefined, {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                    });
+                    return (
+                      <TouchableOpacity
+                        key={entry.id}
+                        style={styles.tlHistoryRow}
+                        activeOpacity={0.7}
+                        onPress={() => router.push(`/results/${entry.id}`)}>
+                        <View
+                          style={[
+                            styles.tlHistoryDot,
+                            { backgroundColor: riskColor(entry.risk_level) },
+                          ]}
+                        />
+                        <View style={styles.tlHistoryInfo}>
+                          <Text style={styles.tlHistoryClass}>
+                            {entry.predicted_class}
+                          </Text>
+                          <Text style={styles.tlHistoryDate}>{dateStr}</Text>
+                        </View>
+                        <View style={styles.tlHistoryRight}>
+                          <Text
+                            style={[
+                              styles.tlHistoryRisk,
+                              { color: riskColor(entry.risk_level) },
+                            ]}>
+                            {entry.risk_score ?? 0}%
+                          </Text>
+                          {isImproved && (
+                            <View style={styles.tlTrendBadgeGreen}>
+                              <TrendingDown size={10} color={Colors.success} />
+                            </View>
+                          )}
+                          {isWorse && (
+                            <View style={styles.tlTrendBadgeRed}>
+                              <TrendingUp size={10} color={Colors.danger} />
+                            </View>
+                          )}
+                        </View>
+                        <ChevronRight size={14} color={Colors.textTertiary} />
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                {/* Legend */}
+                <View style={styles.timelineLegend}>
+                  <View style={styles.timelineLegendItem}>
+                    <View
+                      style={[
+                        styles.timelineDot,
+                        { backgroundColor: Colors.success },
+                      ]}
+                    />
+                    <Text style={styles.timelineLegendText}>Low</Text>
+                  </View>
+                  <View style={styles.timelineLegendItem}>
+                    <View
+                      style={[
+                        styles.timelineDot,
+                        { backgroundColor: Colors.warning },
+                      ]}
+                    />
+                    <Text style={styles.timelineLegendText}>Moderate</Text>
+                  </View>
+                  <View style={styles.timelineLegendItem}>
+                    <View
+                      style={[
+                        styles.timelineDot,
+                        { backgroundColor: Colors.danger },
+                      ]}
+                    />
+                    <Text style={styles.timelineLegendText}>High</Text>
+                  </View>
+                </View>
+              </View>
+            );
+          })()}
+
+        {/* ═══ Disclaimer ═══ */}
         <View style={styles.noteCard}>
           <Text style={styles.noteTitle}>Disclaimer</Text>
           <Text style={styles.noteText}>
@@ -332,7 +930,7 @@ export default function ResultsScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Fullscreen Image Modal */}
+      {/* ═══ Fullscreen Image Modal ═══ */}
       <Modal
         visible={fullscreenVisible}
         animationType='fade'
@@ -342,7 +940,6 @@ export default function ResultsScreen() {
         <View style={styles.modalBg}>
           <StatusBar backgroundColor='#000' barStyle='light-content' />
 
-          {/* Close */}
           <TouchableOpacity
             style={styles.modalClose}
             onPress={() => setFullscreenVisible(false)}
@@ -350,7 +947,6 @@ export default function ResultsScreen() {
             <X size={22} color='#fff' />
           </TouchableOpacity>
 
-          {/* Image */}
           {currentImage && (
             <Image
               source={{
@@ -361,7 +957,6 @@ export default function ResultsScreen() {
             />
           )}
 
-          {/* Bottom toggle */}
           {imageSources.length > 1 && (
             <View style={styles.modalToggleRow}>
               {imageSources.map((src) => (
@@ -389,9 +984,15 @@ export default function ResultsScreen() {
   );
 }
 
+// ─── Styles ─────────────────────────────────────────
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
   loadingText: {
     fontFamily: FontFamily.regular,
     fontSize: FontSize.sm,
@@ -463,7 +1064,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  noImage: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
+  noImage: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
   noImageText: {
     fontFamily: FontFamily.regular,
     fontSize: FontSize.sm,
@@ -571,6 +1177,99 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
 
+  /* Reliability */
+  reliabilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.cardBorder,
+  },
+  reliabilityLabel: {
+    fontFamily: FontFamily.regular,
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+  },
+  reliabilityValue: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.sm,
+  },
+
+  /* Risk Assessment */
+  riskBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    marginBottom: 16,
+  },
+  riskBadgeText: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.sm,
+  },
+
+  /* Meter bars */
+  meterSection: {
+    marginBottom: 16,
+  },
+  meterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  meterLabel: {
+    fontFamily: FontFamily.regular,
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+  },
+  meterValue: {
+    fontFamily: FontFamily.bold,
+    fontSize: FontSize.lg,
+  },
+  meterBarBg: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.surfaceHover,
+  },
+  meterBarFill: {
+    height: 8,
+    borderRadius: 4,
+  },
+  meterHint: {
+    fontFamily: FontFamily.regular,
+    fontSize: FontSize.xs,
+    color: Colors.textTertiary,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+
+  /* Clinical Analysis */
+  clinicalBlock: {
+    marginBottom: 16,
+  },
+  clinicalLabel: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.sm,
+    color: Colors.textPrimary,
+    marginBottom: 6,
+  },
+  clinicalText: {
+    fontFamily: FontFamily.regular,
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  recommendationBox: {
+    borderLeftWidth: 3,
+    paddingLeft: 14,
+    paddingVertical: 12,
+    backgroundColor: Colors.surfaceHover,
+    borderRadius: BorderRadius.sm,
+  },
+
   /* Probabilities */
   probRow: {
     flexDirection: 'row',
@@ -604,6 +1303,62 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 
+  /* Brain Regions */
+  regionDisclaimer: {
+    fontFamily: FontFamily.regular,
+    fontSize: FontSize.xs,
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+    marginBottom: 14,
+    lineHeight: 16,
+  },
+  regionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 10,
+  },
+  regionRank: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: Colors.primaryMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  regionRankText: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.xs,
+    color: Colors.primary,
+  },
+  regionInfo: {
+    flex: 1,
+  },
+  regionName: {
+    fontFamily: FontFamily.medium,
+    fontSize: FontSize.sm,
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  regionBarBg: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: Colors.surfaceHover,
+    overflow: 'hidden',
+  },
+  regionBarFill: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: Colors.primary,
+  },
+  regionPct: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.xs,
+    color: Colors.textPrimary,
+    width: 44,
+    textAlign: 'right',
+  },
+
   /* Info rows */
   infoRow: {
     flexDirection: 'row',
@@ -621,6 +1376,26 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.medium,
     fontSize: FontSize.sm,
     color: Colors.textPrimary,
+  },
+
+  /* PDF Button */
+  pdfBtn: {
+    marginBottom: 14,
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+    ...Shadows.glow,
+  },
+  pdfBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 10,
+  },
+  pdfBtnText: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.lg,
+    color: '#fff',
   },
 
   /* Disclaimer */
@@ -691,5 +1466,190 @@ const styles = StyleSheet.create({
   modalToggleTextActive: {
     color: '#fff',
     fontFamily: FontFamily.semiBold,
+  },
+
+  /* ─── Scan History & Comparison ─── */
+  tlCompareSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surfaceHover,
+    borderRadius: BorderRadius.xl,
+    padding: 16,
+    marginBottom: 16,
+  },
+  tlCompareCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  tlCompareLabel: {
+    fontFamily: FontFamily.medium,
+    fontSize: FontSize.xs,
+    color: Colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  tlCompareBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.full,
+  },
+  tlCompareBadgeText: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.xs,
+  },
+  tlCompareRisk: {
+    fontFamily: FontFamily.medium,
+    fontSize: FontSize.xs,
+    color: Colors.textSecondary,
+  },
+  tlCompareArrow: {
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 8,
+  },
+  tlDeltaText: {
+    fontFamily: FontFamily.bold,
+    fontSize: FontSize.xs,
+  },
+
+  /* Bar chart (horizontal scroll) */
+  tlBarScroll: {
+    marginBottom: 16,
+  },
+  tlBarScrollContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 150,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  tlBarGroup: {
+    alignItems: 'center',
+    width: 44,
+  },
+  tlBarGroupCurrent: {
+    width: 52,
+  },
+  tlBarRiskLabel: {
+    fontFamily: FontFamily.medium,
+    fontSize: 9,
+    color: Colors.textTertiary,
+    marginBottom: 4,
+  },
+  tlBarWrapper: {
+    width: '100%',
+    height: 100,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  tlBar: {
+    width: '65%',
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+    minHeight: 4,
+  },
+  tlBarDate: {
+    fontSize: 9,
+    color: Colors.textTertiary,
+    marginTop: 4,
+    textAlign: 'center',
+    fontFamily: FontFamily.regular,
+  },
+  tlBarDateCurrent: {
+    fontFamily: FontFamily.bold,
+    color: Colors.primary,
+  },
+  tlCurrentDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.primary,
+    marginTop: 3,
+  },
+
+  /* History list */
+  tlHistoryTitle: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.sm,
+    color: Colors.textPrimary,
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  tlHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+    gap: 10,
+  },
+  tlHistoryDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  tlHistoryInfo: {
+    flex: 1,
+  },
+  tlHistoryClass: {
+    fontFamily: FontFamily.medium,
+    fontSize: FontSize.sm,
+    color: Colors.textPrimary,
+  },
+  tlHistoryDate: {
+    fontFamily: FontFamily.regular,
+    fontSize: FontSize.xs,
+    color: Colors.textTertiary,
+    marginTop: 2,
+  },
+  tlHistoryRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tlHistoryRisk: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.sm,
+  },
+  tlTrendBadgeGreen: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.successBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tlTrendBadgeRed: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.dangerBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  /* Legend (shared) */
+  timelineLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 14,
+  },
+  timelineLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  timelineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  timelineLegendText: {
+    fontSize: FontSize.xs,
+    color: Colors.textSecondary,
+    fontFamily: FontFamily.regular,
   },
 });

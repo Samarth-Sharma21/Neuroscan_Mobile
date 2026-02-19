@@ -9,8 +9,12 @@ import {
   Alert,
   ScrollView,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+const SCREEN_W = Dimensions.get('window').width;
+const PREVIEW_SIZE = SCREEN_W - Spacing.xl * 2;
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -162,8 +166,11 @@ export default function ScanScreen() {
             <View style={styles.previewImageContainer}>
               <Image
                 source={{ uri: imageUri }}
-                style={styles.previewImage}
-                resizeMode='contain'
+                style={{
+                  width: PREVIEW_SIZE,
+                  height: PREVIEW_SIZE,
+                }}
+                resizeMode='cover'
               />
               <TouchableOpacity
                 style={styles.clearBtn}
@@ -172,7 +179,12 @@ export default function ScanScreen() {
                 <X size={16} color='#fff' />
               </TouchableOpacity>
             </View>
-            <Text style={styles.previewLabel}>MRI Scan Preview</Text>
+            <View style={styles.previewInfoRow}>
+              <ImageIcon size={14} color={Colors.success} />
+              <Text style={styles.previewInfoText} numberOfLines={1}>
+                {imageUri.split('/').pop() || 'Image selected'}
+              </Text>
+            </View>
           </View>
         )}
 
@@ -343,16 +355,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   previewImageContainer: {
-    width: '100%',
-    aspectRatio: 1,
+    width: PREVIEW_SIZE,
+    height: PREVIEW_SIZE,
     borderRadius: BorderRadius['2xl'],
     overflow: 'hidden',
-    backgroundColor: '#0A0A0A',
+    backgroundColor: '#1a1a2e',
     ...Shadows.lg,
   },
-  previewImage: {
-    width: '100%',
-    height: '100%',
+  previewInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: Spacing.md,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: Colors.successBg,
+    borderRadius: BorderRadius.full,
+  },
+  previewInfoText: {
+    fontFamily: FontFamily.medium,
+    fontSize: FontSize.xs,
+    color: Colors.success,
+    maxWidth: 200,
   },
   clearBtn: {
     position: 'absolute',
@@ -364,12 +388,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  previewLabel: {
-    fontFamily: FontFamily.medium,
-    fontSize: FontSize.sm,
-    color: Colors.textTertiary,
-    marginTop: Spacing.md,
   },
 
   // Analyze
