@@ -10,6 +10,7 @@ import {
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Updates from 'expo-updates';
 import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 import { Colors } from '../src/constants/theme';
 
@@ -93,6 +94,23 @@ export default function RootLayout() {
     Poppins_600SemiBold,
     Poppins_700Bold,
   });
+
+  // Check for OTA updates on every launch and apply immediately
+  useEffect(() => {
+    async function checkForUpdate() {
+      try {
+        if (__DEV__) return; // skip in development
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync();
+        }
+      } catch {
+        // silently ignore update errors
+      }
+    }
+    checkForUpdate();
+  }, []);
 
   useEffect(() => {
     if ((fontsLoaded || fontError) && !splashHidden.current) {
