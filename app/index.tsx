@@ -198,32 +198,32 @@ export default function SplashLanding() {
     ).start();
   }, []);
 
-  // Hard safety: if loading never resolves, force navigation after 3.5s
+  // Hard safety: if loading never resolves, force navigation after 5s
   useEffect(() => {
     const safetyTimer = setTimeout(() => {
       try {
         router.replace(session ? '/(tabs)' : ('/auth' as any));
       } catch {}
-    }, 3500);
+    }, 5000);
     return () => clearTimeout(safetyTimer);
-  }, []);
+  }, [session]);
 
   // Normal navigation: wait for auth to resolve, then navigate after remaining animation time
   useEffect(() => {
-    if (!loading) {
-      const elapsed = Date.now() - mountTimeRef.current;
-      const remaining = Math.max(0, 2200 - elapsed);
-      const timer = setTimeout(() => {
-        try {
-          if (session) {
-            router.replace('/(tabs)');
-          } else {
-            router.replace('/auth' as any);
-          }
-        } catch {}
-      }, remaining);
-      return () => clearTimeout(timer);
-    }
+    if (loading) return;
+
+    const elapsed = Date.now() - mountTimeRef.current;
+    const remaining = Math.max(0, 2200 - elapsed);
+    const timer = setTimeout(() => {
+      try {
+        if (session) {
+          router.replace('/(tabs)');
+        } else {
+          router.replace('/auth' as any);
+        }
+      } catch {}
+    }, remaining);
+    return () => clearTimeout(timer);
   }, [loading, session]);
 
   const logoSpin = logoRotate.interpolate({

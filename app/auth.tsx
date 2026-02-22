@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
-import { router } from 'expo-router';
 import { useAuth } from '../src/contexts/AuthContext';
 import {
   Colors,
@@ -77,20 +76,21 @@ export default function AuthScreen() {
         const { error: err } = await signUp(email, password, fullName);
         if (err) {
           setError(err);
-        } else {
-          router.replace('/(tabs)');
+          setLoading(false);
         }
+        // On success: onAuthStateChange fires → session updates →
+        // useProtectedRoute guard in _layout.tsx auto-navigates to (tabs).
+        // We intentionally do NOT call router.replace here.
       } else {
         const { error: err } = await signIn(email, password);
         if (err) {
           setError(err);
-        } else {
-          router.replace('/(tabs)');
+          setLoading(false);
         }
+        // Same as above — navigation is handled by the auth guard.
       }
     } catch (e: any) {
       setError(e.message || 'An error occurred');
-    } finally {
       setLoading(false);
     }
   };

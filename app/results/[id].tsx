@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,10 +13,12 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import {
   ArrowLeft,
   Brain,
@@ -92,7 +94,9 @@ export default function ResultsScreen() {
   const [loading, setLoading] = useState(true);
   const [imageMode, setImageMode] = useState<ImageMode>('attention');
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
+  const timelineScrollRef = useRef<ScrollView>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
 
   useEffect(() => {
@@ -118,50 +122,169 @@ export default function ResultsScreen() {
     }
   }, [user?.id]);
 
-  // ─── PDF Download & Share ────────────────────────
+  // ─── PDF generation helper ────────────────────────
+  const _generatePdf = useCallback(async () => {
+    if (!report) return null;
+    const patientName = profile?.full_name || 'Patient';
+    const patientDetails = profile
+      ? {
+          age: profile.age ?? null,
+          sex: profile.sex ?? null,
+          date_of_birth: profile.date_of_birth ?? null,
+          blood_group: profile.blood_group ?? null,
+          known_conditions: profile.known_conditions ?? null,
+          current_medications: profile.current_medications ?? null,
+          allergies: profile.allergies ?? null,
+          family_history: profile.family_history ?? null,
+          clinical_notes: profile.clinical_notes ?? null,
+        }
+      : null;
+    return generatePdfReport(
+      report,
+      patientName,
+      patientDetails,
+      timeline.length > 1 ? timeline : null,
+    );
+  }, [report, profile, timeline]);
+
+  // ─── Download directly to device ──────────────────
+  const DOWNLOAD_DIR_KEY = 'neuroscan_download_dir';
+
+  const _writeToSafDir = useCallback(
+    async (
+      dirUri: string,
+      fileName: string,
+      base64: string,
+    ): Promise<boolean> => {
+      try {
+        const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          dirUri,
+          fileName,
+          'application/pdf',
+        );
+        await FileSystem.writeAsStringAsync(destUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
+
   const handleDownloadPdf = useCallback(async () => {
     if (!report) return;
-    setPdfLoading(true);
+    setDownloadLoading(true);
     try {
-      const patientName = profile?.full_name || 'Patient';
-      const patientDetails = profile
-        ? {
-            age: profile.age ?? null,
-            sex: profile.sex ?? null,
-            date_of_birth: profile.date_of_birth ?? null,
-            blood_group: profile.blood_group ?? null,
-            known_conditions: profile.known_conditions ?? null,
-            current_medications: profile.current_medications ?? null,
-            allergies: profile.allergies ?? null,
-            family_history: profile.family_history ?? null,
-            clinical_notes: profile.clinical_notes ?? null,
+      const fileUri = await _generatePdf();
+      if (!fileUri) {
+        Alert.alert('Error', 'Failed to generate PDF report.');
+        return;
+      }
+
+      if (Platform.OS === 'android') {
+        const safeName = (profile?.full_name || 'patient')
+          .replace(/[^a-zA-Z0-9_-]/g, '_')
+          .substring(0, 30);
+        const ts = new Date()
+          .toISOString()
+          .replace(/[:.]/g, '-')
+          .substring(0, 19);
+        const fileName = `neuroscan_report_${safeName}_${ts}.pdf`;
+
+        const base64 = await FileSystem.readAsStringAsync(fileUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        // Try previously saved directory first
+        const savedDirUri = await AsyncStorage.getItem(DOWNLOAD_DIR_KEY);
+        if (savedDirUri) {
+          const ok = await _writeToSafDir(savedDirUri, fileName, base64);
+          if (ok) {
+            Alert.alert('Downloaded', 'PDF saved to your chosen folder.');
+            return;
           }
-        : null;
-      const fileUri = await generatePdfReport(
-        report,
-        patientName,
-        patientDetails,
-        timeline.length > 1 ? timeline : null,
-      );
-      if (fileUri) {
+          // Saved dir no longer valid — clear it and ask again
+          await AsyncStorage.removeItem(DOWNLOAD_DIR_KEY);
+        }
+
+        // First time (or saved dir expired): ask user to pick a folder
+        const permissions =
+          await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+          // Remember this directory for next time
+          await AsyncStorage.setItem(
+            DOWNLOAD_DIR_KEY,
+            permissions.directoryUri,
+          );
+          const ok = await _writeToSafDir(
+            permissions.directoryUri,
+            fileName,
+            base64,
+          );
+          if (ok) {
+            Alert.alert(
+              'Downloaded',
+              'PDF saved! This folder will be used for future downloads.',
+            );
+          } else {
+            Alert.alert('Error', 'Failed to write file.');
+          }
+        } else {
+          // User cancelled picker — fallback to share sheet
+          const canShare = await Sharing.isAvailableAsync();
+          if (canShare) {
+            await Sharing.shareAsync(fileUri, {
+              mimeType: 'application/pdf',
+              dialogTitle: 'Save NeuroScan Report',
+            });
+          }
+        }
+      } else {
+        // iOS: use share sheet which lets user save to Files, etc.
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
           await Sharing.shareAsync(fileUri, {
             mimeType: 'application/pdf',
-            dialogTitle: 'NeuroScan Report',
+            dialogTitle: 'Save NeuroScan Report',
           });
         } else {
           Alert.alert('Success', 'PDF report saved to app documents.');
         }
-      } else {
-        Alert.alert('Error', 'Failed to generate PDF report.');
       }
     } catch (e: any) {
       Alert.alert('Error', e.message || 'PDF generation failed.');
     } finally {
-      setPdfLoading(false);
+      setDownloadLoading(false);
     }
-  }, [report, profile]);
+  }, [report, profile, _generatePdf, _writeToSafDir]);
+
+  // ─── Share report as PDF ─────────────────────────
+  const handleSharePdf = useCallback(async () => {
+    if (!report) return;
+    setShareLoading(true);
+    try {
+      const fileUri = await _generatePdf();
+      if (!fileUri) {
+        Alert.alert('Error', 'Failed to generate PDF report.');
+        return;
+      }
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Share NeuroScan Report',
+        });
+      } else {
+        Alert.alert('Info', 'Sharing is not available on this device.');
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'PDF sharing failed.');
+    } finally {
+      setShareLoading(false);
+    }
+  }, [report, _generatePdf]);
 
   // ─── Loading / Error states ──────────────────────
   if (loading) {
@@ -231,8 +354,8 @@ export default function ResultsScreen() {
         <TouchableOpacity
           onPress={handleDownloadPdf}
           style={styles.headerBack}
-          disabled={pdfLoading}>
-          {pdfLoading ? (
+          disabled={downloadLoading || shareLoading}>
+          {downloadLoading ? (
             <ActivityIndicator size='small' color={Colors.primary} />
           ) : (
             <Download size={20} color={Colors.primary} />
@@ -500,33 +623,41 @@ export default function ResultsScreen() {
               <BarChart3 size={18} color={Colors.primary} />
               <Text style={styles.sectionTitle}>Class Probabilities</Text>
             </View>
-            {Object.entries(report.probabilities).map(
-              ([cls, prob]: [string, any]) => {
-                const ci = classificationColors[cls];
-                const pctValue =
-                  Number(prob) > 1 ? Number(prob) : Number(prob) * 100;
-                const clampedWidth = Math.min(pctValue, 100);
-                return (
-                  <View key={cls} style={styles.probRow}>
-                    <Text style={styles.probClass} numberOfLines={1}>
-                      {ci?.label || cls}
-                    </Text>
-                    <View style={styles.probBarBg}>
-                      <View
-                        style={[
-                          styles.probBarFill,
-                          {
-                            width: `${clampedWidth.toFixed(0)}%` as any,
-                            backgroundColor: ci?.color || Colors.primary,
-                          },
-                        ]}
-                      />
+            {(() => {
+              // Backend always returns percentages (0-100).
+              // Sort descending so highest probability is first.
+              return Object.entries(report.probabilities)
+                .map(
+                  ([cls, prob]: [string, any]) =>
+                    [cls, Number(prob)] as [string, number],
+                )
+                .sort((a, b) => b[1] - a[1])
+                .map(([cls, pctValue]: [string, number]) => {
+                  const ci = classificationColors[cls];
+                  const clampedWidth = Math.min(pctValue, 100);
+                  return (
+                    <View key={cls} style={styles.probRow}>
+                      <Text style={styles.probClass} numberOfLines={1}>
+                        {ci?.label || cls}
+                      </Text>
+                      <View style={styles.probBarBg}>
+                        <View
+                          style={[
+                            styles.probBarFill,
+                            {
+                              width: `${clampedWidth.toFixed(0)}%` as any,
+                              backgroundColor: ci?.color || Colors.primary,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.probValue}>
+                        {pctValue.toFixed(1)}%
+                      </Text>
                     </View>
-                    <Text style={styles.probValue}>{pctValue.toFixed(1)}%</Text>
-                  </View>
-                );
-              },
-            )}
+                  );
+                });
+            })()}
           </View>
         )}
 
@@ -585,16 +716,55 @@ export default function ResultsScreen() {
               <Text style={styles.sectionTitle}>HUFA Module Stats</Text>
             </View>
             {Object.entries(report.hufa_stats).map(
-              ([key, val]: [string, any]) => (
-                <View key={key} style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>
-                    {key
+              ([blockKey, stats]: [string, any]) => (
+                <View key={blockKey} style={styles.hufaBlock}>
+                  <Text style={styles.hufaBlockTitle}>
+                    {blockKey
                       .replace(/_/g, ' ')
                       .replace(/\b\w/g, (c: string) => c.toUpperCase())}
                   </Text>
-                  <Text style={styles.infoValue}>
-                    {typeof val === 'number' ? val.toFixed(4) : String(val)}
-                  </Text>
+                  {stats && typeof stats === 'object' ? (
+                    <>
+                      {stats.alpha != null && (
+                        <View style={styles.infoRow}>
+                          <Text style={styles.infoLabel}>Alpha</Text>
+                          <Text style={styles.infoValue}>
+                            {Number(stats.alpha).toFixed(4)}
+                          </Text>
+                        </View>
+                      )}
+                      {stats.lambda_u != null && (
+                        <View style={styles.infoRow}>
+                          <Text style={styles.infoLabel}>Lambda U</Text>
+                          <Text style={styles.infoValue}>
+                            {Number(stats.lambda_u).toFixed(4)}
+                          </Text>
+                        </View>
+                      )}
+                      {stats.scale_weights &&
+                        Array.isArray(stats.scale_weights) && (
+                          <View style={styles.infoRow}>
+                            <Text style={styles.infoLabel}>Scale Weights</Text>
+                            <Text style={styles.infoValue}>
+                              [
+                              {stats.scale_weights
+                                .map((w: number) => Number(w).toFixed(4))
+                                .join(', ')}
+                              ]
+                            </Text>
+                          </View>
+                        )}
+                    </>
+                  ) : (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Value</Text>
+                      <Text style={styles.infoValue}>
+                        {typeof stats === 'number'
+                          ? stats.toFixed(4)
+                          : String(stats ?? 'N/A')}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               ),
             )}
@@ -638,30 +808,52 @@ export default function ResultsScreen() {
           </View>
         </View>
 
-        {/* ═══ PDF Download Button ═══ */}
-        <TouchableOpacity
-          style={styles.pdfBtn}
-          onPress={handleDownloadPdf}
-          disabled={pdfLoading}
-          activeOpacity={0.85}>
-          <LinearGradient
-            colors={[...Colors.gradientPrimary]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.pdfBtnInner, pdfLoading && { opacity: 0.7 }]}>
-            {pdfLoading ? (
-              <>
-                <ActivityIndicator color='#fff' size='small' />
-                <Text style={styles.pdfBtnText}>Generating PDF...</Text>
-              </>
-            ) : (
-              <>
-                <FileText size={20} color='#fff' />
-                <Text style={styles.pdfBtnText}>Download PDF Report</Text>
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+        {/* ═══ PDF Download & Share Buttons ═══ */}
+        <View style={styles.pdfBtnRow}>
+          <TouchableOpacity
+            style={[styles.pdfBtn, { flex: 1, marginRight: 8 }]}
+            onPress={handleDownloadPdf}
+            disabled={downloadLoading || shareLoading}
+            activeOpacity={0.85}>
+            <LinearGradient
+              colors={[...Colors.gradientPrimary]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.pdfBtnInner, downloadLoading && { opacity: 0.7 }]}>
+              {downloadLoading ? (
+                <>
+                  <ActivityIndicator color='#fff' size='small' />
+                  <Text style={styles.pdfBtnText}>Downloading...</Text>
+                </>
+              ) : (
+                <>
+                  <Download size={20} color='#fff' />
+                  <Text style={styles.pdfBtnText}>Download</Text>
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.shareBtn, { flex: 1, marginLeft: 8 }]}
+            onPress={handleSharePdf}
+            disabled={downloadLoading || shareLoading}
+            activeOpacity={0.85}>
+            <View
+              style={[styles.shareBtnInner, shareLoading && { opacity: 0.7 }]}>
+              {shareLoading ? (
+                <>
+                  <ActivityIndicator size={18} color={Colors.primary} />
+                  <Text style={styles.shareBtnText}>Sharing...</Text>
+                </>
+              ) : (
+                <>
+                  <FileText size={20} color={Colors.primary} />
+                  <Text style={styles.shareBtnText}>Share Report</Text>
+                </>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
 
         {/* ═══ Scan History & Comparison ═══ */}
         {timeline.length > 1 &&
@@ -771,10 +963,14 @@ export default function ResultsScreen() {
 
                 {/* Bar chart row */}
                 <ScrollView
+                  ref={timelineScrollRef}
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   style={styles.tlBarScroll}
-                  contentContainerStyle={styles.tlBarScrollContent}>
+                  contentContainerStyle={styles.tlBarScrollContent}
+                  onContentSizeChange={() =>
+                    timelineScrollRef.current?.scrollToEnd({ animated: false })
+                  }>
                   {timeline.map((entry, idx) => {
                     const isCurrent = entry.id === currentEntry.id;
                     const riskVal = entry.risk_score ?? 0;
@@ -1376,11 +1572,31 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.medium,
     fontSize: FontSize.sm,
     color: Colors.textPrimary,
+    flexShrink: 1,
+    textAlign: 'right',
   },
 
-  /* PDF Button */
-  pdfBtn: {
+  /* HUFA block card */
+  hufaBlock: {
+    backgroundColor: Colors.background,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  hufaBlockTitle: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.sm,
+    color: Colors.primary,
+    marginBottom: Spacing.xs,
+    textTransform: 'capitalize',
+  },
+
+  /* PDF & Share Buttons */
+  pdfBtnRow: {
+    flexDirection: 'row',
     marginBottom: 14,
+  },
+  pdfBtn: {
     borderRadius: BorderRadius.lg,
     overflow: 'hidden',
     ...Shadows.glow,
@@ -1394,8 +1610,27 @@ const styles = StyleSheet.create({
   },
   pdfBtnText: {
     fontFamily: FontFamily.semiBold,
-    fontSize: FontSize.lg,
+    fontSize: FontSize.md,
     color: '#fff',
+  },
+  shareBtn: {
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+  },
+  shareBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    gap: 10,
+    backgroundColor: Colors.surface,
+  },
+  shareBtnText: {
+    fontFamily: FontFamily.semiBold,
+    fontSize: FontSize.md,
+    color: Colors.primary,
   },
 
   /* Disclaimer */

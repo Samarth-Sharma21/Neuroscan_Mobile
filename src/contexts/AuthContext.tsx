@@ -106,10 +106,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, fetchProfile]);
 
   useEffect(() => {
-    // Get initial session
+    let isMounted = true;
+
+    // Get initial session from AsyncStorage
     supabase.auth
       .getSession()
       .then(({ data: { session } }) => {
+        if (!isMounted) return;
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
@@ -118,25 +121,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
       })
       .catch(() => {
+        if (!isMounted) return;
         // Network error or Supabase timeout — don't stay stuck on splash
         setLoading(false);
       });
 
-    // Listen for auth changes
+    // Listen for auth changes (sign-in, sign-out, token refresh).
+    // IMPORTANT: Do NOT await fetchProfile here — it would block the
+    // session/user state update and cause the "stuck on signing in" bug.
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+
       setSession(session);
       setUser(session?.user ?? null);
+
       if (session?.user) {
-        await fetchProfile(session.user.id);
+        // Fire-and-forget: profile loads in the background so it doesn't
+        // block auth state propagation (which drives navigation).
+        fetchProfile(session.user.id);
       } else {
         setProfile(null);
       }
-      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, [fetchProfile]);
 
   const signUp = async (email: string, password: string, fullName: string) => {
