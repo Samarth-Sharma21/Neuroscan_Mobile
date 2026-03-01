@@ -125,7 +125,11 @@ export default function ResultsScreen() {
   // ─── PDF generation helper ────────────────────────
   const _generatePdf = useCallback(async () => {
     if (!report) return null;
-    const patientName = profile?.full_name || 'Patient';
+    const patientName =
+      profile?.full_name ||
+      user?.user_metadata?.full_name ||
+      (user?.email ? user.email.split('@')[0] : '') ||
+      'Patient';
     const patientDetails = profile
       ? {
           age: profile.age ?? null,
