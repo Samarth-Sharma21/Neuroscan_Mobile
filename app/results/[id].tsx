@@ -21,7 +21,6 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
   ArrowLeft,
-  Brain,
   BarChart3,
   Info,
   X,
@@ -306,7 +305,11 @@ export default function ResultsScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
-          <Brain size={56} color={Colors.textTertiary} />
+          <Image
+            source={require('../../assets/images/neuroscan-logo4.png')}
+            style={{ width: 56, height: 56, opacity: 0.4 }}
+            resizeMode='contain'
+          />
           <Text style={styles.errorText}>Report not found</Text>
           <TouchableOpacity
             style={styles.goBackBtn}
@@ -391,7 +394,11 @@ export default function ResultsScreen() {
               </>
             ) : (
               <View style={styles.noImage}>
-                <Brain size={48} color={Colors.textTertiary} />
+                <Image
+                  source={require('../../assets/images/neuroscan-logo4.png')}
+                  style={{ width: 48, height: 48, opacity: 0.4 }}
+                  resizeMode='contain'
+                />
                 <Text style={styles.noImageText}>No image available</Text>
               </View>
             )}

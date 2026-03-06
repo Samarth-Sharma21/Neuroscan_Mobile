@@ -7,10 +7,10 @@ import {
   Dimensions,
   Platform,
   Easing,
+  Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Brain } from 'lucide-react-native';
 import { useAuth } from '../src/contexts/AuthContext';
 import { Colors, FontFamily, FontSize } from '../src/constants/theme';
 
@@ -317,7 +317,11 @@ export default function SplashLanding() {
           },
         ]}>
         <View style={styles.logoCircle}>
-          <Brain size={48} color={Colors.primary} strokeWidth={1.8} />
+          <Image
+            source={require('../assets/images/neuroscan-logo2.png')}
+            style={styles.logoImage}
+            resizeMode='cover'
+          />
         </View>
       </Animated.View>
 
@@ -416,14 +420,17 @@ const styles = StyleSheet.create({
     width: 104,
     height: 104,
     borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.2,
     shadowRadius: 28,
     elevation: 16,
+  },
+  logoImage: {
+    width: 104,
+    height: 104,
+    borderRadius: 32,
   },
   title: {
     fontSize: FontSize['4xl'],

@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
@@ -24,7 +25,6 @@ import {
   Shadows,
 } from '../src/constants/theme';
 import {
-  Brain,
   Mail,
   Lock,
   User,
@@ -110,7 +110,11 @@ export default function AuthScreen() {
 
         <View style={styles.logoContainer}>
           <View style={styles.logoIcon}>
-            <Brain size={32} color={Colors.primary} strokeWidth={2} />
+            <Image
+              source={require('../assets/images/neuroscan-logo2.png')}
+              style={styles.logoImage}
+              resizeMode='contain'
+            />
           </View>
           <Text style={styles.logoText}>NeuroScan</Text>
           <Text style={styles.logoSubtext}>AI-Powered Dementia Detection</Text>
@@ -288,14 +292,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
+    width: 72,
+    height: 72,
+    borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.95)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.md,
+    overflow: 'hidden',
     ...Shadows.md,
+  },
+  logoImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 22,
   },
   logoText: {
     fontSize: FontSize['3xl'],

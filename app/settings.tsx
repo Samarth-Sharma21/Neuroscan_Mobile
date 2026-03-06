@@ -11,13 +11,13 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   ArrowLeft,
-  Brain,
   Shield,
   Info,
   ExternalLink,
@@ -150,7 +150,11 @@ export default function SettingsScreen() {
           style={styles.aboutCard}>
           <View style={styles.aboutOrb} />
           <View style={styles.aboutIcon}>
-            <Brain size={32} color='#fff' />
+            <Image
+              source={require('../assets/images/neuroscan-logo2.png')}
+              style={styles.aboutLogoImage}
+              resizeMode='cover'
+            />
           </View>
           <Text style={styles.aboutName}>NeuroScan</Text>
           <Text style={styles.aboutVersion}>Version 1.0.0</Text>
@@ -476,10 +480,13 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
     marginBottom: 14,
+  },
+  aboutLogoImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
   },
   aboutName: {
     fontFamily: FontFamily.bold,

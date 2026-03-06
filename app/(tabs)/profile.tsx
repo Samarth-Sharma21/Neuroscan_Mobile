@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -17,7 +18,6 @@ import {
   Clock,
   FileText,
   Activity,
-  Brain,
   Hash,
   LogOut,
   ChevronRight,
@@ -150,7 +150,11 @@ export default function ProfileScreen() {
                 </View>
                 <View style={styles.statCard}>
                   <View style={styles.statIconBox}>
-                    <Brain size={20} color={Colors.primary} />
+                    <Image
+                      source={require('../../assets/images/neuroscan-logo4.png')}
+                      style={{ width: 24, height: 24 }}
+                      resizeMode='contain'
+                    />
                   </View>
                   <Text
                     style={[styles.statValue, styles.statValueSmall]}

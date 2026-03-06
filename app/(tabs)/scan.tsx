@@ -23,7 +23,6 @@ import {
   Camera,
   ImageIcon,
   X,
-  Brain,
   Zap,
   ChevronRight,
 } from 'lucide-react-native';
@@ -125,7 +124,11 @@ export default function ScanScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerIcon}>
-            <Brain size={24} color={Colors.primary} />
+            <Image
+              source={require('../../assets/images/neuroscan-logo4.png')}
+              style={{ width: 28, height: 28 }}
+              resizeMode='contain'
+            />
           </View>
           <Text style={styles.title}>Upload MRI Scan</Text>
           <Text style={styles.subtitle}>

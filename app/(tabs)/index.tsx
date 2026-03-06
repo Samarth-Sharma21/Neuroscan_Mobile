@@ -7,13 +7,13 @@ import {
   ScrollView,
   Dimensions,
   Platform,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Upload,
-  Brain,
   Activity,
   Shield,
   ChevronRight,
@@ -137,7 +137,7 @@ export default function HomeScreen() {
           <View style={styles.featuresGrid}>
             {[
               {
-                icon: <Brain size={24} color={Colors.primary} />,
+                icon: <Image source={require('../../assets/images/neuroscan-logo4.png')} style={{ width: 28, height: 28 }} resizeMode='contain' />,
                 title: 'Dementia Classification',
                 desc: 'Four-class staging: Non-Demented, Very Mild, Mild, and Moderate Dementia.',
               },
