@@ -23,10 +23,18 @@ async function generate() {
   const fgSize = 1024;
   const innerSize = Math.round(fgSize * 0.66);
   const resizedFg = await sharp(logo4)
-    .resize(innerSize, innerSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(innerSize, innerSize, {
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
     .toBuffer();
   await sharp({
-    create: { width: fgSize, height: fgSize, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    create: {
+      width: fgSize,
+      height: fgSize,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
   })
     .composite([{ input: resizedFg, gravity: 'centre' }])
     .png()
@@ -61,7 +69,10 @@ async function generate() {
 </svg>`;
 
   const resizedLogo = await sharp(logo4)
-    .resize(logoSize, logoSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(logoSize, logoSize, {
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
     .toBuffer();
 
   await sharp(Buffer.from(splashBgSVG))
@@ -89,7 +100,10 @@ async function generate() {
 </svg>`;
 
   const appLogo = await sharp(logo4)
-    .resize(200, 200, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(200, 200, {
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
     .toBuffer();
 
   await sharp(Buffer.from(appBgSVG))
