@@ -4,6 +4,14 @@
 
 **Neuro-Scan** is a deep learning-powered medical imaging system designed to analyze MRI scans. This repository contains the source code for the **Mobile Application**, built using React Native and Expo, which allows physicians and researchers to analyze neurological data on iOS and Android devices dynamically.
 
+---
+
+## 🌐 About & Live Demo
+You can try out the live web version of our companion application here:
+👉 **[Neuro-Scan Web - Live Demo](https://neuroscan-web.netlify.app/)**
+
+📱 **For Android Users:** You can download the compiled `.apk` file for testing this application directly from the **[Releases](https://github.com/Samarth-Sharma21/Neuroscan_Mobile/releases)** section of this repository.
+
 > **Web Application Repository:** Please note that the companion web application interface for Neuro-Scan can be found here: [Neuroscan_website](https://github.com/Samarth-Sharma21/Neuroscan_website). 
 
 ---
