@@ -1,7 +1,8 @@
 import { supabase } from '../lib/supabase';
 import * as FileSystem from 'expo-file-system/legacy';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL!;
+let rawApiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://samarth-21-neuroscan-api.hf.space';
+const API_URL = rawApiUrl.replace(/\/+$/, '');
 const HF_TOKEN = process.env.EXPO_PUBLIC_HF_ACCESS_TOKEN!;
 
 // ─── Types ──────────────────────────────────────────
